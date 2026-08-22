@@ -37,15 +37,61 @@ interface AuthValue {
 
 const AuthContext = createContext<AuthValue | null>(null);
 
-function mapEmployee(row: any): Employee {
+function splitName(name: string) {
+  const parts = name.trim().split(/\s+/);
+
   return {
-    ...row,
-    workEmail: row.workEmail ?? row.work_email ?? '',
-    userId: row.userId ?? row.user_id ?? undefined,
-  } as Employee;
+    firstName: parts[0] ?? '',
+    lastName: parts.slice(1).join(' '),
+  };
 }
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
+function mapEmployee(row: any): Employee {
+  const salary = Number(row.salary ?? 0);
+
+  return {
+    id: row.id,
+    name: `${row.first_name ?? ''} ${row.last_name ?? ''}`.trim(),
+    workEmail: row.work_email ?? '',
+    personalEmail: '',
+    phone: row.phone_number ?? '',
+    address: '',
+    emergency: {
+      name: '',
+      relationship: '',
+      phone: '',
+    },
+    department: row.department ?? 'Unassigned',
+    designation: row.position ?? 'Employee',
+    manager: '',
+    employmentType: 'Full-time',
+    joinDate: row.hire_date ?? '',
+    employmentStatus: 'Active',
+    role: row.is_admin ? 'admin' : 'employee',
+    password: '',
+    verified: true,
+    verificationCode: '',
+    balances: {
+      casual: { total: 12, used: 0 },
+      sick: { total: 10, used: 0 },
+      earned: { total: 18, used: 0 },
+      unpaid: { total: 0, used: 0 },
+    },
+    salary: {
+      basic: salary,
+      hra: 0,
+      allowances: 0,
+      tax: 0,
+      pf: 0,
+    },
+  };
+}
+
+export function AuthProvider({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const [currentUser, setCurrentUser] = useState<Employee | null>(null);
   const [pendingUser, setPendingUser] = useState<Employee | null>(null);
   const [loading, setLoading] = useState(true);
@@ -92,25 +138,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
+    } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (!mounted) return;
 
-      if (event === 'SIGNED_OUT' || !session?.user) {
+      if (!session?.user) {
         setCurrentUser(null);
+        setLoading(false);
         return;
       }
 
-      if (
-        event === 'SIGNED_IN' ||
-        event === 'INITIAL_SESSION' ||
-        event === 'TOKEN_REFRESHED' ||
-        event === 'USER_UPDATED'
-      ) {
-        const employee = await loadEmployee(session.user.id);
+      const employee = await loadEmployee(session.user.id);
 
-        if (mounted) {
-          setCurrentUser(employee);
-        }
+      if (mounted) {
+        setCurrentUser(employee);
+        setLoading(false);
       }
     });
 
@@ -122,18 +163,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signUp = useCallback(
     async (input: SignUpInput): Promise<AuthResult> => {
-      const email = input.workEmail.trim().toLowerCase();
+      const { firstName, lastName } = splitName(input.name);
 
-      const { data, error } = await supabase.auth.signUp({
-        email,
+      const {
+        data: { user },
+        error,
+      } = await supabase.auth.signUp({
+        email: input.workEmail.trim().toLowerCase(),
         password: input.password,
         options: {
           data: {
-            employee_id: input.id,
-            name: input.name,
-            role: input.role,
+            employee_code: input.id.toUpperCase(),
+            first_name: firstName,
+            last_name: lastName,
           },
-          emailRedirectTo: window.location.origin,
         },
       });
 
@@ -144,43 +187,61 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         };
       }
 
-      if (!data.user) {
+      if (!user) {
         return {
           ok: false,
           error: 'Unable to create the account.',
         };
       }
 
-      /*
-       * With Supabase email confirmation enabled, signup normally
-       * returns a user without an active session.
-       *
-       * The employee record must be created by the database-side
-       * auth trigger/function, not by the browser.
-       */
-      if (!data.session) {
-        return {
-          ok: true,
-          needsVerification: true,
-        };
-      }
-
-      const employee = await loadEmployee(data.user.id);
-
-      if (employee) {
-        setCurrentUser(employee);
-      }
+      setPendingUser({
+        id: user.id,
+        name: input.name,
+        workEmail: input.workEmail.trim().toLowerCase(),
+        personalEmail: '',
+        phone: '',
+        address: '',
+        emergency: {
+          name: '',
+          relationship: '',
+          phone: '',
+        },
+        department: 'Unassigned',
+        designation: 'New Joiner',
+        manager: '',
+        employmentType: 'Full-time',
+        joinDate: new Date().toISOString().slice(0, 10),
+        employmentStatus: 'Active',
+        role: 'employee',
+        password: '',
+        verified: false,
+        verificationCode: '',
+        balances: {
+          casual: { total: 12, used: 0 },
+          sick: { total: 10, used: 0 },
+          earned: { total: 18, used: 0 },
+          unpaid: { total: 0, used: 0 },
+        },
+        salary: {
+          basic: 0,
+          hra: 0,
+          allowances: 0,
+          tax: 0,
+          pf: 0,
+        },
+      });
 
       return {
         ok: true,
+        needsVerification: true,
       };
     },
-    [loadEmployee]
+    []
   );
 
   const signIn = useCallback(
     async (email: string, password: string): Promise<AuthResult> => {
-      const { data, error } = await supabase.auth.signInWithPassword({
+      const { error } = await supabase.auth.signInWithPassword({
         email: email.trim().toLowerCase(),
         password,
       });
@@ -188,84 +249,56 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (error) {
         return {
           ok: false,
-          error: error.message,
+          error: 'Email or password is incorrect.',
         };
       }
 
-      if (!data.user) {
-        return {
-          ok: false,
-          error: 'Unable to sign in.',
-        };
-      }
-
-      const employee = await loadEmployee(data.user.id);
-
-      if (!employee) {
-        await supabase.auth.signOut();
-
-        return {
-          ok: false,
-          error:
-            'Your authentication account exists, but your employee profile has not been created yet.',
-        };
-      }
-
-      setCurrentUser(employee);
-      setPendingUser(null);
-
-      return {
-        ok: true,
-      };
+      return { ok: true };
     },
-    [loadEmployee]
+    []
   );
 
-  /*
-   * Supabase email confirmation uses the confirmation link/OTP.
-   *
-   * The existing UI can continue calling verifyCode(), but the actual
-   * verification is now handled by Supabase Auth.
-   */
-  const verifyCode = useCallback(async (_code: string): Promise<AuthResult> => {
+  const verifyCode = useCallback(async (): Promise<AuthResult> => {
     const {
-      data: { session },
-    } = await supabase.auth.getSession();
+      data: { user },
+    } = await supabase.auth.getUser();
 
-    if (session?.user) {
-      const employee = await loadEmployee(session.user.id);
-
-      if (employee) {
-        setCurrentUser(employee);
-        setPendingUser(null);
-
-        return {
-          ok: true,
-        };
-      }
+    if (!user) {
+      return {
+        ok: false,
+        error: 'No authenticated user found.',
+      };
     }
 
-    return {
-      ok: false,
-      error:
-        'Please use the verification link sent to your email, then return to the application.',
-    };
+    if (!user.email_confirmed_at) {
+      return {
+        ok: false,
+        error: 'Please verify your email before continuing.',
+      };
+    }
+
+    const employee = await loadEmployee(user.id);
+
+    if (!employee) {
+      return {
+        ok: false,
+        error: 'Your employee profile could not be found.',
+      };
+    }
+
+    setCurrentUser(employee);
+    setPendingUser(null);
+
+    return { ok: true };
   }, [loadEmployee]);
 
   const resendCode = useCallback(async () => {
     if (!pendingUser?.workEmail) return;
 
-    const { error } = await supabase.auth.resend({
+    await supabase.auth.resend({
       type: 'signup',
       email: pendingUser.workEmail,
-      options: {
-        emailRedirectTo: window.location.origin,
-      },
     });
-
-    if (error) {
-      console.error('Failed to resend verification email:', error);
-    }
   }, [pendingUser]);
 
   const cancelVerification = useCallback(() => {
@@ -273,13 +306,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
-    const { error } = await supabase.auth.signOut();
-
-    if (error) {
-      console.error('Sign out failed:', error);
-      return;
-    }
-
+    await supabase.auth.signOut();
     setCurrentUser(null);
     setPendingUser(null);
   }, []);
