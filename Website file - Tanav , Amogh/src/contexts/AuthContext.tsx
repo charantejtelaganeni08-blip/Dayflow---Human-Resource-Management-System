@@ -283,6 +283,24 @@ export function AuthProvider({
   },
   [loadEmployee]
 );
+  
+    const employee = await loadEmployee(data.user.id);
+
+    console.log('Employee loaded:', employee);
+
+    if (!employee) {
+      return {
+        ok: false,
+        error: 'Login succeeded, but no employee profile was found for this account.',
+      };
+    }
+
+    setCurrentUser(employee);
+
+    return { ok: true };
+  },
+  [loadEmployee]
+);
 
       if (error) {
         return {
