@@ -240,11 +240,49 @@ export function AuthProvider({
   );
 
   const signIn = useCallback(
-    async (email: string, password: string): Promise<AuthResult> => {
-      const { error } = await supabase.auth.signInWithPassword({
-        email: email.trim().toLowerCase(),
-        password,
-      });
+  async (email: string, password: string): Promise<AuthResult> => {
+    const cleanEmail = email.trim().toLowerCase();
+
+    console.log('Attempting sign in:', cleanEmail);
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: cleanEmail,
+      password,
+    });
+
+    console.log('Supabase sign in response:', { data, error });
+
+    if (error) {
+      return {
+        ok: false,
+        error: error.message,
+      };
+    }
+
+    if (!data.user) {
+      return {
+        ok: false,
+        error: 'Supabase did not return a user.',
+      };
+    }
+
+    const employee = await loadEmployee(data.user.id);
+
+    console.log('Employee loaded:', employee);
+
+    if (!employee) {
+      return {
+        ok: false,
+        error: 'Login succeeded, but no employee profile was found for this account.',
+      };
+    }
+
+    setCurrentUser(employee);
+
+    return { ok: true };
+  },
+  [loadEmployee]
+);
 
       if (error) {
         return {
