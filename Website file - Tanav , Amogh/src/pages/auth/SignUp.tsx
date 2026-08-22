@@ -53,9 +53,9 @@ export function SignUp() {
       
       <form
         className="flex flex-col gap-4"
-        onSubmit={(event) => {
-          event.preventDefault();
-          const result = signUp({
+       onSubmit={async (event) => {
+         event.preventDefault();
+         const result = await signUp({
             id: employeeId.toUpperCase(),
             name: name.trim(),
             workEmail: email.trim().toLowerCase(),
