@@ -29,7 +29,7 @@ interface AuthValue {
   pendingUser: Employee | null;
   signUp: (input: SignUpInput) => Promise<AuthResult>;
   signIn: (email: string, password: string) => Promise<AuthResult>;
-  verifyCode: (code: string) => Promise<AuthResult>;
+  verifyCode: () => Promise<AuthResult>;
   resendCode: () => Promise<void>;
   cancelVerification: () => void;
   signOut: () => Promise<void>;
