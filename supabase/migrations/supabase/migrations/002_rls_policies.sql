@@ -172,27 +172,17 @@ WITH CHECK (
   )
 );
 
-
-CREATE POLICY "Users can update own leave or admins can update all"
+CREATE POLICY "Admins can update leave requests"
 ON public.leave_requests
 FOR UPDATE
 TO authenticated
 USING (
-  employee_id IN (
-    SELECT id
-    FROM public.employees
-    WHERE user_id = auth.uid()
-  )
-  OR public.is_admin()
+  public.is_admin()
 )
 WITH CHECK (
-  employee_id IN (
-    SELECT id
-    FROM public.employees
-    WHERE user_id = auth.uid()
-  )
-  OR public.is_admin()
+  public.is_admin()
 );
+
 
 
 CREATE POLICY "Admins can delete leave requests"
