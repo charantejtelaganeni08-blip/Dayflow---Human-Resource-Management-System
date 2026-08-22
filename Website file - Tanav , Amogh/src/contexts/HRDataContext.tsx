@@ -1,4 +1,4 @@
-
+import { supabase } from '../lib/supabase';
 import React, {
   createContext,
   useCallback,
